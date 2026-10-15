@@ -1,5 +1,5 @@
-// The section cc-stretch adds to Claude's system prompt. The benchmark rewrites replies under
-// this same text, so it lives on its own.
+// Sent to Claude with each typed prompt. The benchmark rewrites replies under this same text, so it
+// lives on its own.
 export const GUIDE = `# Stretchtext replies
 
 The reader's screen draws each stretch \`{{short|long}}\` in your reply as its short form, a link. A click puts the long form in its place and the text reads on; nothing moves to a separate section. So write every reply to read complete at its shortest, with depth where each stretch stands:

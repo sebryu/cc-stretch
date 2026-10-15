@@ -1,5 +1,16 @@
 # cc-stretch
 
+> Fork of [pro-vi/cc-stretch](https://github.com/pro-vi/cc-stretch) that hooks no event an
+> organization's managed install keeps to its own plugins (`prompt.compose`, `classic.MessageDisplay`),
+> so it works where the upstream plugin is passed over. The guide reaches Claude with each typed prompt
+> instead of the system prompt, and a reply shows its markup while it streams.
+>
+> Use this fork only if your Claude Code is managed by an organization and `/plugin` reports that
+> cc-stretch's hooks on `classic.MessageDisplay` and `prompt.compose` do not run; everywhere else,
+> install the upstream plugin, which streams cleanly and keeps the guide in the system prompt. I made
+> it for my own use and do not intend to keep it up to date, so expect it to fall behind both upstream
+> releases and Claude Code's plugin API.
+
 **Claude writes a lot. Now you can read a little.**
 
 ![A reply in Claude Code growing in place as phrases are clicked](docs/stretch.gif)
@@ -12,7 +23,7 @@ shrinks back. Claude is told which parts you opened, so it doesn't assume you re
 In a Claude Code session:
 
 ```
-/plugin install cc-stretch --marketplace pro-vi/cc-stretch
+/plugin install cc-stretch --marketplace sebryu/cc-stretch
 /tui fullscreen
 ```
 
@@ -70,7 +81,6 @@ never lose your place.
 ## What else it does
 
 - **Stretches nest.** A long form can hold more stretches.
-- **Streaming stays clean.** While a reply streams, stretches already show as their short forms.
 - **Quieter tool calls.** A finished group of tool calls folds to Claude Code's own one-line summary
   (`Ran 3 shell commands ▸ show`). Running calls, and calls that errored, stay open.
 
@@ -87,6 +97,8 @@ never lose your place.
 - Claude writes every level up front, so a reply costs about as many tokens as before. You read
   less; you don't pay less.
 - The `{{short|long}}` markup shows as raw text wherever the plugin isn't loaded.
+- While a reply streams, its `{{short|long}}` markup shows; the finished reply draws its stretches.
+- The guide, about 450 tokens, goes with each prompt you type and stays in the conversation.
 - Built on Claude Code's function-hook plugin API, which is early access and changes between
   releases. Checked in the terminal on macOS with Claude Code 2.1.292 to 2.1.294 and 2.1.300, and in
   the Claude desktop app with 2.1.295.

@@ -1,10 +1,11 @@
-import type { On, RenderSurface } from 'claude-code'
+import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { grow } from '../hooks/grow'
 import { layout, link, linkAt, tint, widthOf } from '../hooks/layout'
-import { hideLongForms, paragraphsOf, parse, stretches } from '../hooks/parse'
+import { GUIDE } from '../hooks/guide'
+import { paragraphsOf, parse, stretches } from '../hooks/parse'
 
 const REPLY = [
   'The build fails {{on a stale cache|because the cache key hashes only `package.json`{{, set in one file|, set in `ci/cache.ts`}}}}.',
@@ -21,13 +22,6 @@ const FULLSCREEN = { columns: 100, rows: 40, isFullscreen: true }
 const MAIN_SCREEN = { columns: 100, rows: 40, isFullscreen: false }
 const HREF = 'https://cc-stretch.invalid/'
 const FIRST = 'paragraph-0'
-const COMPOSE = {
-  model: 'claude-opus-5-5',
-  promptModel: 'claude-opus-5-5',
-  tools: [],
-  outputStyle: null,
-  traits: [],
-} as const
 
 const mountReply = ($: Engine, viewport: typeof FULLSCREEN, text = REPLY, surface: 'terminal' | 'desktop' = 'terminal', requestId = 'reply-1') =>
   $.ui.mount({
@@ -108,41 +102,6 @@ describe('grow', () => {
 
   test('a long form without the short words arrives in reading order', async () => {
     expect(grow('x', parse('one two three four'), 0.5, () => '')).toBe('one two ')
-  })
-})
-
-describe('streaming', () => {
-  test('shows each stretch as its short form, across flushes, and drops lines of hidden depth', async () => {
-    const state = { open: [], fence: undefined }
-    expect(hideLongForms('The build fails {{on a stale cache|because the cache key', state)).toBe('The build fails on a stale cache')
-    expect(hideLongForms('hashes only `package.json`.\nStill hidden.\n}}, written {{x|y}} there.\n\nNext `{{a|b}}` line.', state)).toBe(', written x there.\n\nNext `{{a|b}}` line.')
-    expect(hideLongForms('}} done.', { open: [{ isLong: true }], fence: undefined })).toBe(' done.')
-  })
-
-  for (const surfaces of [['terminal'], ['terminal', 'mobile'], ['terminal', 'vscode']] satisfies RenderSurface[][]) {
-    test(`the display of a streaming reply never shows the markup with ${surfaces.join(' and ')} attached`, async ($, on) => {
-      on('classic.MessageDisplay', () => ({}))
-      on('session.surfaces', () => ({ value: surfaces }))
-      const flush = (index: number, delta: string, final = false) =>
-        $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index, final, delta })
-      expect((await flush(0, 'A monad is {{a wrapper|a wrapper, like')).displayContent).toBe('A monad is a wrapper')
-      expect((await flush(1, 'Maybe or List,}} with two operations.', true)).displayContent).toBe(' with two operations.')
-    })
-  }
-
-  test('a message keeps the filter it started with when the desktop attaches or leaves midway', async ($, on) => {
-    let surfaces: RenderSurface[] = ['terminal']
-    on('classic.MessageDisplay', () => ({}))
-    on('session.surfaces', () => ({ value: surfaces }))
-    const flush = (message: string, index: number, delta: string, final = false) =>
-      $.classic.MessageDisplay({ turn_id: 't', message_id: message, index, final, delta })
-    expect((await flush('m1', 0, 'A monad is {{a wrapper|a wrapper, like')).displayContent).toBe('A monad is a wrapper')
-    surfaces = ['terminal', 'desktop']
-    expect((await flush('m1', 1, 'Maybe or List,}} with two operations.', true)).displayContent).toBe(' with two operations.')
-
-    expect((await flush('m2', 0, 'A monad is {{a wrapper|a wrapper, like')).displayContent).toBeUndefined()
-    surfaces = ['terminal']
-    expect((await flush('m2', 1, 'Maybe or List,}} with two operations.', true)).displayContent).toBeUndefined()
   })
 })
 
@@ -440,7 +399,7 @@ describe('desktop app', () => {
     const ui = await mountReply($, FULLSCREEN, text, 'desktop')
     await ui.press({ key: 'stretch', link: { href: linkTo('open', 'a stretch', text) } })
     await $.prompt.submit({ text: 'ok', wait: false, origin: { kind: 'composer' } })
-    expect(context).toEqual(['Stretchtext: since your last reply the reader opened "a stretch".'])
+    expect(context).toEqual([GUIDE, 'Stretchtext: since your last reply the reader opened "a stretch".'])
     await ui.unmount()
   })
 
@@ -461,19 +420,12 @@ describe('desktop app', () => {
     await ui.press({ key: 'stretch', link: { href: linkTo('open', OUTER) } })
     await $.prompt.submit({ text: 'ok', wait: false, origin: { kind: 'composer' } })
     expect(context).toEqual([
+      GUIDE,
       'Stretchtext: since your last reply the reader opened "on a stale cache". They did not open ", set in one file", "The fix is one line.".',
     ])
     await ui.unmount()
   })
 
-  for (const surfaces of [['desktop'], ['terminal', 'desktop']] satisfies RenderSurface[][]) {
-    test(`a reply streaming with ${surfaces.join(' and ')} attached keeps its markup, which the desktop's links are made from`, async ($, on) => {
-      on('classic.MessageDisplay', () => ({}))
-      on('session.surfaces', () => ({ value: surfaces }))
-      const flush = await $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index: 0, final: true, delta: 'A monad is {{a wrapper|a wrapper.}}' })
-      expect(flush.displayContent).toBeUndefined()
-    })
-  }
 })
 
 test('a reply without a stretch is drawn by the engine', async ($, on) => {
@@ -499,12 +451,18 @@ test('a stretch still streaming shows its short form and none of its markup', as
   await ui.unmount()
 })
 
-test('the system prompt carries the guide while something draws', async ($, on) => {
-  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude Code.', scope: 'shared' }] }))
-  const drawn = await $.prompt.compose({ ...COMPOSE, surfaces: ['terminal'] })
-  expect(drawn.sections.at(-1)?.id).toBe('cc-stretch:guide')
-  const headless = await $.prompt.compose({ ...COMPOSE, surfaces: [] })
-  expect(headless.sections.some(s => s.id === 'cc-stretch:guide')).toBe(false)
+test('every typed prompt carries the guide, and a prompt from elsewhere does not', async ($, on) => {
+  on('session.messages', () => ({ value: [] }))
+  let context: readonly string[] | undefined
+  on('prompt.submit', ($, e) => {
+    context = e.context
+    return { text: e.text, context: e.context }
+  })
+  await $.prompt.submit({ text: 'hi', wait: false, origin: { kind: 'composer' } })
+  expect(context).toEqual([GUIDE])
+  context = undefined
+  await $.prompt.submit({ text: 'hi', wait: false, origin: { kind: 'plugin', name: 'other' } })
+  expect(context ?? []).not.toContain(GUIDE)
 })
 
 test('the next prompt tells the model which stretches were opened and which not', async ($, on) => {
@@ -524,11 +482,13 @@ test('the next prompt tells the model which stretches were opened and which not'
   await pressOn(ui, 'on a stale cache')
   await $.prompt.submit({ text: 'ok', wait: false, origin: { kind: 'composer' } })
   expect(context).toEqual([
+    GUIDE,
     'Stretchtext: since your last reply the reader opened "on a stale cache". They did not open ", set in one file", "The fix is one line.".',
   ])
 
   await $.prompt.submit({ text: 'and?', wait: false, origin: { kind: 'composer' } })
   expect(context).toEqual([
+    GUIDE,
     'Stretchtext: no click on a stretch of your last reply was recorded. The reader may have read only the short forms; where clicks do not reach the plugin (the classic renderer, apps other than the terminal and the Claude desktop app), every stretch was drawn open.',
   ])
   await ui.unmount()

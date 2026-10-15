@@ -2,8 +2,8 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { Register, RenderInput, SessionMessage } from 'claude-code'
 
 import { GUIDE } from './guide'
-import { closeAfter, codeSpanEnd, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, paragraphsOf, parentOf, parse, stretches } from './parse'
-import type { Segment, StreamState, Stretch } from './parse'
+import { closeAfter, codeSpanEnd, isLinkable, isOpenable, KEY_SEPARATOR, paragraphsOf, parentOf, parse, stretches } from './parse'
+import type { Segment, Stretch } from './parse'
 import type { ReplyPost, ReplyProps, Tint } from './reply'
 
 const openStretches = atom({ plugin: 'cc-stretch', key: 'open' } as const, [])
@@ -41,37 +41,9 @@ const HREF = 'https://cc-stretch.invalid/'
 
 
 export const register: Register = on => {
-  // While a reply streams, Claude Code draws its lines as they arrive, before the reply reaches
-  // the AssistantMessage site below. Showing each stretch as its short form there too keeps the
-  // raw markup from flashing past. One filter state per message, until its final flush; null for a
-  // message left as written.
-  const streams = new Map<string, StreamState | null>()
-  on('classic.MessageDisplay', async ($, e, next) => {
-    const answer = await next(e)
-    // The desktop app draws a finished reply from this display text, so hiding the long forms here
-    // would strip the markup its links are made from. Decided on a message's first flush, so a
-    // surface that attaches or leaves midway cannot half-filter it.
-    let state = streams.get(e.message_id)
-    if (state === undefined) state = (await $.session.surfaces()).includes('desktop') ? null : { open: [], fence: undefined }
-    if (e.final) streams.delete(e.message_id)
-    else streams.set(e.message_id, state)
-    if (state === null) return answer
-
-    return { ...answer, displayContent: hideLongForms(answer.displayContent ?? e.delta, state) }
-  })
-
-  on('prompt.compose', async ($, e, next) => {
-    const composed = await next(e)
-    if (e.surfaces.length === 0) return composed
-
-    return {
-      sections: [
-        ...composed.sections,
-        { id: 'cc-stretch:guide', text: GUIDE, scope: 'session' },
-      ],
-    }
-  })
-
+  // An organization's managed install passes prompt.compose and classic.MessageDisplay over plugins it
+  // does not own, so the guide rides on each typed prompt instead of the system prompt, and a reply
+  // shows its raw markup while it streams.
   on('prompt.submit', async ($, e, next) => {
     if (e.origin.kind !== 'composer') return next(e)
 
@@ -83,7 +55,6 @@ export const register: Register = on => {
     const unopened = written.filter(short => !opened.includes(short))
     await update($, seen, () => [])
     await update($, newestReply, () => '')
-    if (opened.length === 0 && unopened.length === 0) return next(e)
 
     const quote = (list: string[]) => list.map(s => `"${s}"`).join(', ')
     // A prompt cannot tell whether the reply was drawn where clicks land, so with no clicks the
@@ -91,9 +62,11 @@ export const register: Register = on => {
     const note =
       opened.length > 0
         ? `Stretchtext: since your last reply the reader opened ${quote(opened)}.${unopened.length > 0 ? ` They did not open ${quote(unopened)}.` : ''}`
-        : 'Stretchtext: no click on a stretch of your last reply was recorded. The reader may have read only the short forms; where clicks do not reach the plugin (the classic renderer, apps other than the terminal and the Claude desktop app), every stretch was drawn open.'
+        : unopened.length > 0
+          ? 'Stretchtext: no click on a stretch of your last reply was recorded. The reader may have read only the short forms; where clicks do not reach the plugin (the classic renderer, apps other than the terminal and the Claude desktop app), every stretch was drawn open.'
+          : undefined
 
-    return next({ ...e, context: [...(e.context ?? []), note] })
+    return next({ ...e, context: [...(e.context ?? []), GUIDE, ...(note === undefined ? [] : [note])] })
   }).catch(($, e, next) => next(e))
 
   // Tool calls fold to Claude Code's own one-line summary of their group once

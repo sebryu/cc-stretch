@@ -166,51 +166,6 @@ export function stretches(segments: Segment[]): Stretch[] {
   )
 }
 
-/** Where a streaming filter stands between flushes: open stretches and an open code fence. */
-export type StreamState = { open: { isLong: boolean }[]; fence: string | undefined }
-
-/**
- * A streaming reply's newly finished lines with each stretch shown as its short form, as the
- * finished reply will first show it. `state` carries open stretches and fences from one flush to
- * the next. A line that held only long-form text is left out, so the stream does not grow blank
- * lines where hidden depth goes.
- */
-export function hideLongForms(lines: string, state: StreamState): string {
-  return lines
-    .split('\n')
-    .flatMap(line => {
-      const fence = /^[ \t]*(`{3,}|~{3,})/.exec(line)?.[1]
-      if (state.fence !== undefined || fence !== undefined) {
-        const isShown = state.open.length === 0 || (state.open.length === 1 && state.open[0]?.isLong === false)
-        if (state.fence === undefined) state.fence = fence
-        else if (fence !== undefined && fence[0] === state.fence[0] && fence.length >= state.fence.length) state.fence = undefined
-        return isShown ? [line] : []
-      }
-      let out = ''
-      for (let i = 0; i < line.length; i++) {
-        const top = state.open.at(-1)
-        const isShown = state.open.length === 0 || (state.open.length === 1 && top?.isLong === false)
-        if (line[i] === '`') {
-          const stop = codeSpanEnd(line, i)
-          if (isShown) out += line.slice(i, stop)
-          i = stop - 1
-        } else if (line.startsWith('{{', i) && top?.isLong !== false) {
-          state.open.push({ isLong: false })
-          i++
-        } else if (top?.isLong === false && line[i] === '|') {
-          top.isLong = true
-        } else if (top !== undefined && line.startsWith('}}', i)) {
-          state.open.pop()
-          i++
-        } else if (isShown) {
-          out += line[i]
-        }
-      }
-      return out.trim() === '' && line.trim() !== '' ? [] : [out]
-    })
-    .join('\n')
-}
-
 /** A run of the reply between blank lines, and whether it holds a stretch. */
 export type Paragraph = { text: string; hasStretch: boolean }
 

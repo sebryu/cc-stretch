@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 — 2026-10-15 (fork)
+
+- Hooks no event an organization's managed install keeps to its own plugins. The guide goes with each
+  typed prompt, alongside the note on what the reader opened, instead of the system prompt, and the
+  streaming filter is gone, so a reply shows its markup until it finishes.
+
 ## 0.3.3 — 2026-10-15
 
 - The guide sent to Claude is back to its 0.3.1 text. The line 0.3.2 added, asking that a short form
