@@ -32,6 +32,17 @@ restarting and resuming your session. If stretches still show open, see [Limits]
 Claude desktop app stretches are links: click one to open it in place, click `«` to close it. No
 setting needed.
 
+If the install fails with `Failed to add marketplace: Cannot add marketplace "cc-stretch": its source
+doesn't match its extraKnownMarketplaces entry`, you already have a `cc-stretch` marketplace from the
+upstream repo. Remove that entry, then install again:
+
+```
+claude plugin marketplace remove cc-stretch
+```
+
+If the error persists, the entry is declared in your settings: edit `extraKnownMarketplaces` in
+`~/.claude/settings.json` to delete `cc-stretch` or point its `repo` at `sebryu/cc-stretch`.
+
 ## What to expect
 
 You read about a sixth of what Claude writes. Across 69 real replies from four of my coding
